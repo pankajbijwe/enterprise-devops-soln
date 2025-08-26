@@ -1,0 +1,20 @@
+spring:
+  cloud:
+    vault:
+      uri: http://vault.mycompany.com:8200
+      token: s.your-root-token
+      authentication: TOKEN
+      generic:
+        enabled: true
+        backend: secret
+        default-context: userservice
+        profile-separator: '-'
+
+  vault:
+    enabled: true
+
+userservice:
+  vault:
+    db-username: ${vault.secret.userservice.db-username}
+    db-password: ${vault.secret.userservice.db-password}
+    api-key: ${vault.secret.userservice.api-key}
