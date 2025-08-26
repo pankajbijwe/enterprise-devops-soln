@@ -1,5 +1,14 @@
 Enterprise grade production-ready DevSecOps CI/CD solution for microservices
 
+Key features/roadmap
+- Gatekeepers at Every Stage: quality, security, container, and deploy gates
+- Immutable Artifacts: every Maven deploy and Docker image is versioned by commit SHA
+- Least-Privilege & Secrets Management: OpenShift secrets, GitLab CI variables
+- Observability Hooks: readiness/liveness probes, Fortify and Sonar reporting artifacts
+- Self-Healing & Rollback: easy oc rollout undo, autoscaling, multi-AZ pods
+- Governance & Audit: Git history, protected branches, MR approvals, pipeline logs
+
+
 Branching Strategy 
 - Establish a clear branching model and commit policy.
 - Main Branch Protection

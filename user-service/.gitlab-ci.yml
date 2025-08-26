@@ -1,0 +1,94 @@
+stages:
+  - build
+  - test
+  - quality
+  - security
+  - dockerize
+  - deploy
+
+variables:
+  MAVEN_CLI_OPTS: "-s .maven/settings.xml --batch-mode"
+  IMAGE_TAG: "$CI_COMMIT_SHORT_SHA"
+  REGISTRY: "image-registry.openshift-image-registry.svc:5000"
+  PROJECT: "your-openshift-project"
+  APP_NAME: "java-microservice"
+  NEXUS_URL: "http://nexus.company.com/repository/maven-releases/"
+  SONAR_HOST_URL: "http://sonarqube.company.com"
+  SONAR_TOKEN: "$SONAR_TOKEN"
+  FORTIFY_SCA_PATH: "/opt/fortify/bin/sourceanalyzer"
+  NEXUS_IQ_URL: "http://nexus-iq.company.com"
+  WEBINSPECT_API: "http://webinspect.company.com/api"
+
+# 1. Build & deploy to Nexus
+build:
+  stage: build
+  image: maven:3.8.7-openjdk-17
+  script:
+    - mvn $MAVEN_CLI_OPTS clean compile deploy \
+        -DaltDeploymentRepository=nexus::default::$NEXUS_URL
+
+# 2. Unit Tests
+test:
+  stage: test
+  image: maven:3.8.7-openjdk-17
+  script:
+    - mvn $MAVEN_CLI_OPTS test
+
+# 3. SonarQube Quality Gate
+quality:
+  stage: quality
+  image: maven:3.8.7-openjdk-17
+  script:
+    - mvn sonar:sonar \
+        -Dsonar.projectKey=$APP_NAME \
+        -Dsonar.host.url=$SONAR_HOST_URL \
+        -Dsonar.login=$SONAR_TOKEN
+  allow_failure: false
+
+# 4. Security Scans (Fortify, Nexus IQ, WebInspect)
+security:
+  stage: security
+  image: maven:3.8.7-openjdk-17
+  script:
+    - $FORTIFY_SCA_PATH -b $APP_NAME -clean
+    - $FORTIFY_SCA_PATH -b $APP_NAME src/ -scan -f ${APP_NAME}.fpr
+    - /opt/fortify/bin/ReportGenerator \
+        -format pdf -f ${APP_NAME}.fpr -o fortify-report.pdf
+    - curl -X POST "$NEXUS_IQ_URL/api/v2/scan" \
+        -H "Authorization: Bearer $NEXUS_IQ_TOKEN" \
+        -F "file=@target/*.jar"
+    - curl -X POST "$WEBINSPECT_API/scan" \
+        -H "Authorization: Bearer $WEBINSPECT_TOKEN" \
+        -d '{"url":"https://app-url"}'
+  allow_failure: false
+
+# 5. Build & Push Container
+dockerize:
+  stage: dockerize
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker build -t $REGISTRY/$PROJECT/$APP_NAME:$IMAGE_TAG .
+    - echo "$CI_JOB_TOKEN" \
+        | docker login -u gitlab-ci-token --password-stdin $REGISTRY
+    - docker push $REGISTRY/$PROJECT/$APP_NAME:$IMAGE_TAG
+
+# 6. Deploy to OpenShift
+deploy:
+  stage: deploy
+  image: registry.redhat.io/openshift4/ose-cli
+  script:
+    - oc login $OPENSHIFT_API --token=$OPENSHIFT_TOKEN --insecure-skip-tls-verify
+    - oc project $PROJECT
+    - oc apply -f openshift/deployment.yaml
+    - oc apply -f openshift/service.yaml
+    - oc apply -f openshift/route.yaml
+    - oc set image deployment/$APP_NAME \
+        $APP_NAME=$REGISTRY/$PROJECT/$APP_NAME:$IMAGE_TAG
+    - oc rollout status deployment/$APP_NAME
+  environment:
+    name: production
+    url: https://$APP_NAME.$PROJECT.apps.yourdomain.com
+  only:
+    - main

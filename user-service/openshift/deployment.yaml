@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: java-microservice
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: java-microservice
+  template:
+    metadata:
+      labels:
+        app: java-microservice
+    spec:
+      containers:
+      - name: java-microservice
+        image: image-registry.openshift-image-registry.svc:5000/your-openshift-project/java-microservice:latest
+        ports:
+          - containerPort: 8080
+        envFrom:
+          - secretRef:
+              name: java-microservice-secrets
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu:    "250m"
+          limits:
+            memory: "1Gi"
+            cpu:    "500m"
